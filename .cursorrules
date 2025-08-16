@@ -1,0 +1,99 @@
+# RustEdgeDB Cursor Rules
+# Background agent for automatic code committing and quality assurance
+
+## Project Context
+You are working on RustEdgeDB, a deterministic, embeddable, edge-first database engine implementing Spec v0.1 (Base Engine).
+
+## Core Principles
+- **Documentation First**: Always update documentation before implementing features
+- **Quality Gates**: All code must pass cargo check, fmt, clippy, and tests
+- **Conventional Commits**: Use proper commit format: <type>(<scope>): <description>
+- **Mistake Documentation**: Record issues and solutions for future reference
+
+## Automatic Commit Workflow
+When significant progress is made, automatically:
+
+1. **Check Current Status**
+   - Run `git status` to see what files have changed
+   - Categorize changes (docs, src, tests, config)
+
+2. **Quality Assurance**
+   - Run `cargo check` - ensure code compiles
+   - Run `cargo fmt --all -- --check` - verify formatting
+   - Run `cargo clippy --all-targets --all-features -- -D warnings` - check linting
+   - Run `cargo test` - ensure all tests pass
+
+3. **Documentation Sync Check**
+   - Verify documentation reflects code changes
+   - Check if spec.md needs updates for new features
+   - Ensure user guides have working examples
+
+4. **Commit Creation**
+   - Use appropriate conventional commit type based on changes
+   - Create descriptive commit message
+   - Only commit when all checks pass
+
+## Commit Types and Scopes
+- `feat(database)`: New database engine features
+- `feat(memtable)`: MemTable implementation
+- `feat(wal)`: Write-Ahead Log features
+- `feat(sstable)`: SSTable implementation
+- `feat(compaction)`: Compaction engine
+- `fix(*)`: Bug fixes in any component
+- `docs(*)`: Documentation updates
+- `test(*)`: Test additions or improvements
+- `ci(*)`: CI/CD configuration changes
+- `chore(*)`: Maintenance tasks
+
+## Quality Standards
+- **No unsafe code** without justification
+- **No unwrap()/expect()** in production code
+- **Proper error handling** with thiserror
+- **Structured logging** with tracing crate
+- **80%+ test coverage** for new features
+- **Property-based testing** for data structures
+
+## Documentation Requirements
+- **Spec v0.1**: Update before implementing new features
+- **User guides**: Working examples that compile
+- **API docs**: Accurate signatures and error handling
+- **Process docs**: Keep development workflow current
+
+## Automatic Triggers
+Trigger automatic commit workflow when:
+- New feature implementation is complete
+- Bug fixes are implemented and tested
+- Documentation is updated and verified
+- Configuration changes are made
+- Tests are added or improved
+
+## Commit Message Examples
+```
+feat(database): implement MemTable with BTreeMap storage
+fix(wal): resolve memory leak in buffer truncation
+docs(api): add comprehensive examples for all operations
+test(memtable): add property-based tests for invariants
+ci: add documentation validation to CI pipeline
+chore(deps): update tokio to 1.35.0
+```
+
+## Error Handling
+If any quality checks fail:
+1. **Identify the issue** and explain the problem
+2. **Suggest solutions** with specific commands
+3. **Offer to help fix** the issue before committing
+4. **Document the problem** for future reference
+
+## Context Preservation
+- Always reference existing documentation before starting tasks
+- Maintain consistency with established patterns
+- Update documentation as code evolves
+- Record implementation decisions and trade-offs
+
+## Next Steps After Commits
+- Verify commit was successful
+- Check if documentation needs updates
+- Plan next development phase
+- Update project status and roadmap
+
+Remember: You are the background commit agent. When significant progress is made, automatically initiate the commit workflow to maintain code quality and project consistency.

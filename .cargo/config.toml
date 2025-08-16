@@ -1,0 +1,27 @@
+[build]
+# Ensure we use the correct target for edge environments
+# target = "wasm32-unknown-unknown"
+
+[rust]
+# Use Rust 2024 edition features
+edition = "2024"
+
+[target.'cfg(target_arch = "wasm32")']
+# WASM-specific settings for edge deployment
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[profile.dev]
+# Development profile optimizations
+opt-level = 0
+debug = true
+incremental = true
+
+[profile.release]
+# Release profile optimizations
+opt-level = 3
+debug = false
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
