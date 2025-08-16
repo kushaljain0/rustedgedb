@@ -513,27 +513,34 @@ impl SSTable {
     pub fn get(&mut self, key: &[u8]) -> SSTableResult<Option<Vec<u8>>> {
         // Check bloom filter first
         if !self.bloom_filter.might_contain(key) {
+            println!("DEBUG: Bloom filter rejected key {:?}", String::from_utf8_lossy(key));
             return Ok(None);
         }
+        println!("DEBUG: Bloom filter passed for key {:?}", String::from_utf8_lossy(key));
 
         // Find key in index
         let index_entry = self.index.find_key(key);
         if index_entry.is_none() {
+            println!("DEBUG: Key {:?} not found in index", String::from_utf8_lossy(key));
             return Ok(None);
         }
         let index_entry = index_entry.unwrap();
+        println!("DEBUG: Key {:?} found in index at offset {}", String::from_utf8_lossy(key), index_entry.offset);
 
         // Seek to data position
         self.file.seek(SeekFrom::Start(index_entry.offset))?;
+        println!("DEBUG: Seeking to offset {} for key {:?}", index_entry.offset, String::from_utf8_lossy(key));
 
         // Read entry header
         let mut key_len_bytes = [0u8; 4];
         self.file.read_exact(&mut key_len_bytes)?;
         let key_len = u32::from_le_bytes(key_len_bytes);
+        println!("DEBUG: Read key_len: {}", key_len);
 
         let mut value_len_bytes = [0u8; 4];
         self.file.read_exact(&mut value_len_bytes)?;
         let value_len = u32::from_le_bytes(value_len_bytes);
+        println!("DEBUG: Read value_len: {}", value_len);
 
         let mut timestamp_bytes = [0u8; 8];
         self.file.read_exact(&mut timestamp_bytes)?;
@@ -546,21 +553,27 @@ impl SSTable {
         // Read key (verify it matches)
         let mut stored_key = vec![0u8; key_len as usize];
         self.file.read_exact(&mut stored_key)?;
+        println!("DEBUG: Read stored_key: {:?}", String::from_utf8_lossy(&stored_key));
 
         if stored_key != key {
+            println!("DEBUG: Key mismatch! Expected {:?}, got {:?}", 
+                    String::from_utf8_lossy(key), String::from_utf8_lossy(&stored_key));
             return Err(SSTableError::InvalidIndex(format!(
                 "Key mismatch: expected {:?}, got {:?}",
                 String::from_utf8_lossy(key),
                 String::from_utf8_lossy(&stored_key)
             )));
         }
+        println!("DEBUG: Key verification passed");
 
         // Read value
         if value_len > 0 {
             let mut value = vec![0u8; value_len as usize];
             self.file.read_exact(&mut value)?;
+            println!("DEBUG: Read value: {:?}", String::from_utf8_lossy(&value));
             Ok(Some(value))
         } else {
+            println!("DEBUG: Value length is 0 (tombstone)");
             Ok(None) // Tombstone
         }
     }
