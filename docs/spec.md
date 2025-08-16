@@ -225,44 +225,127 @@ pub struct SSTableHeader {
 - **I/O Efficiency**: Single pass through data with optimized file writing
 - **Space Savings**: Removes tombstones and duplicates, typically 20-40% reduction
 
+### 5. Engine
+**Purpose**: Main database orchestrator that coordinates WAL, MemTable, and SSTable operations
+
+#### Structure
+```rust
+pub struct Engine {
+    wal: WAL,
+    memtable: MemTable,
+    config: EngineConfig,
+    sstables: Arc<RwLock<Vec<SSTable>>>,
+    sequence_number: Arc<RwLock<u64>>,
+}
+
+pub struct EngineConfig {
+    pub data_dir: PathBuf,
+    pub memtable_size: usize,
+    pub compression: CompressionType,
+    pub max_levels: usize,
+}
+```
+
+#### Properties
+- **Coordinated Operations**: Orchestrates WAL, MemTable, and SSTable interactions
+- **Write-Ahead Logging**: Ensures durability before acknowledging operations
+- **Automatic Flushing**: Triggers MemTable flush when size threshold exceeded
+- **Crash Recovery**: Replays WAL into MemTable on restart
+- **Lookup Optimization**: Searches MemTable first, then SSTables in order
+
+#### Core Responsibilities
+1. **Write Operations**: Write to WAL first, then MemTable
+2. **Read Operations**: Search MemTable → SSTables (newest first)
+3. **MemTable Management**: Automatic flushing and replacement
+4. **WAL Rotation**: New WAL file after each MemTable flush
+5. **Recovery**: Reconstruct database state from WAL on startup
+
+#### Implementation Details
+- **Async Operations**: All public methods use async/await for non-blocking I/O
+- **Thread Safety**: Arc + RwLock for shared SSTable list
+- **Sequence Numbers**: Monotonically increasing across all operations
+- **Error Handling**: Comprehensive error types with proper propagation
+- **Configuration**: Flexible configuration with sensible defaults
+- **Statistics**: Runtime statistics for monitoring and debugging
+
+#### Lifecycle
+1. **Initialization**: Create data directory, initialize WAL and MemTable
+2. **Recovery**: Replay existing WAL files to restore state
+3. **Operation**: Handle put/get/delete requests with proper coordination
+4. **Maintenance**: Automatic MemTable flushing and WAL rotation
+5. **Shutdown**: Flush remaining data and close resources gracefully
+
+#### Performance Characteristics
+- **Write Throughput**: WAL + MemTable operations (O(log n) in MemTable)
+- **Read Latency**: MemTable hit (O(log n)) vs SSTable search (O(log n) per level)
+- **Memory Usage**: MemTable size + SSTable metadata overhead
+- **Recovery Time**: O(n) where n is number of WAL records
+- **Space Efficiency**: Automatic compaction reduces storage overhead
+
 ---
 
 ## API Surface
 
 ### Core Operations
 
+The Engine provides the primary database interface, orchestrating all underlying components:
+
+#### Engine Creation
+```rust
+// Create with default configuration
+pub async fn new<P: AsRef<Path>>(data_dir: P) -> EngineResult<Self>
+
+// Create with custom configuration
+pub async fn with_config(config: EngineConfig) -> EngineResult<Self>
+```
+
 #### Put Operation
 ```rust
-pub async fn put(&mut self, key: &[u8], value: &[u8]) -> Result<(), DatabaseError>
+pub async fn put(&mut self, key: &[u8], value: &[u8]) -> EngineResult<()>
 ```
 
 **Semantics**: Store key-value pair with current timestamp
 **Durability**: WAL write + MemTable update
 **Performance**: O(log n) in MemTable, O(1) amortized
+**Coordination**: Engine ensures WAL durability before MemTable update
 
 #### Get Operation
 ```rust
-pub async fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, DatabaseError>
+pub async fn get(&self, key: &[u8]) -> EngineResult<Option<Vec<u8>>>
 ```
 
 **Semantics**: Retrieve value for key, None if not found
-**Search Order**: MemTable → Level 0 → Level 1... → Level 7
+**Search Order**: MemTable → SSTables (newest first)
 **Performance**: O(log n) with bloom filter optimization
+**Coordination**: Engine searches MemTable first, then SSTables in order
 
 #### Delete Operation
 ```rust
-pub async fn delete(&mut self, key: &[u8]) -> Result<(), DatabaseError>
+pub async fn delete(&mut self, key: &[u8]) -> EngineResult<()>
 ```
 
 **Semantics**: Mark key as deleted (tombstone)
 **Durability**: WAL write + MemTable update
 **Cleanup**: Removed during compaction
+**Coordination**: Engine creates tombstone entry in both WAL and MemTable
+
+#### Engine Management
+```rust
+// Force flush of current MemTable
+pub async fn force_flush(&mut self) -> EngineResult<()>
+
+// Get engine statistics
+pub fn stats(&self) -> EngineStats
+
+// Graceful shutdown
+pub async fn close(&mut self) -> EngineResult<()>
+```
 
 ### Batch Operations
 
 #### Batch Write
 ```rust
-pub async fn batch_write(&mut self, operations: Vec<BatchOp>) -> Result<(), DatabaseError>
+pub async fn batch_write(&mut self, operations: Vec<BatchOp>) -> EngineResult<()>
 
 pub enum BatchOp {
     Put { key: Vec<u8>, value: Vec<u8> },
@@ -273,20 +356,25 @@ pub enum BatchOp {
 **Semantics**: Atomic batch of multiple operations
 **Durability**: Single WAL entry for entire batch
 **Performance**: O(n log n) for n operations
+**Coordination**: Engine ensures atomicity across all operations
 
 ### Configuration
 
-#### Database Options
+#### Engine Configuration
 ```rust
-pub struct DatabaseOptions {
+pub struct EngineConfig {
     pub data_dir: PathBuf,
     pub memtable_size: usize,
-    pub sstable_size: usize,
     pub compression: CompressionType,
-    pub bloom_filter_bits: usize,
     pub max_levels: usize,
 }
 ```
+
+**Default Values**:
+- `data_dir`: "./data"
+- `memtable_size`: 64MB
+- `compression`: None
+- `max_levels`: 7
 
 ---
 
@@ -347,6 +435,36 @@ pub struct DatabaseOptions {
 - Storage overhead measurement
 - Compression ratio validation
 - Index size optimization
+
+### 5. Engine Coordination
+**Requirement**: Engine maintains consistency across all components
+
+**Implementation**:
+- WAL write before MemTable update (Write-Ahead Logging)
+- MemTable flush triggers WAL rotation
+- Sequence number continuity across all operations
+- Automatic recovery from WAL on restart
+
+**Verification**:
+- Crash recovery tests with Engine restart
+- Sequence number continuity validation
+- WAL rotation and MemTable flush coordination
+- Component state consistency checks
+
+### 6. Operation Ordering
+**Requirement**: Operations maintain logical consistency
+
+**Implementation**:
+- Sequence numbers monotonically increase across all operations
+- WAL records written in operation order
+- MemTable operations respect sequence number ordering
+- SSTable lookups follow newest-first search order
+
+**Verification**:
+- Concurrent operation testing
+- Sequence number ordering validation
+- Read-after-write consistency checks
+- Deletion and re-insertion scenarios
 
 ---
 
@@ -502,6 +620,47 @@ mod sstable_tests {
 }
 ```
 
+#### Engine Tests
+```rust
+#[cfg(test)]
+mod engine_tests {
+    #[test]
+    async fn test_basic_operations() {
+        // Test put, get, delete operations
+    }
+    
+    #[test]
+    async fn test_persistence() {
+        // Test data persistence across engine restarts
+    }
+    
+    #[test]
+    async fn test_crash_recovery() {
+        // Test crash recovery by replaying WAL
+    }
+    
+    #[test]
+    async fn test_memtable_flush() {
+        // Test automatic MemTable flushing and WAL rotation
+    }
+    
+    #[test]
+    async fn test_correctness_with_deletions() {
+        // Test deletion handling and tombstone behavior
+    }
+    
+    #[test]
+    async fn test_empty_key_handling() {
+        // Test error handling for invalid inputs
+    }
+    
+    #[test]
+    async fn test_sequence_number_continuity() {
+        // Test sequence number ordering across operations
+    }
+}
+```
+
 ### 2. Integration Tests
 
 #### End-to-End Operations
@@ -635,6 +794,28 @@ fn bench_compaction_speed(b: &mut Bencher) {
 - **Recoverable vs. fatal errors** clearly distinguished
 - **Context information** included in error messages
 - **Error codes** for programmatic handling
+
+### Engine Implementation
+- **Component Orchestration**: Engine coordinates WAL, MemTable, and SSTable operations
+  - **Rationale**: Centralized coordination ensures consistency and proper ordering
+  - **Design**: Async/await pattern for non-blocking I/O operations
+  - **Thread Safety**: Arc<RwLock<Vec<SSTable>>> for shared SSTable list management
+- **Write-Ahead Logging**: All operations write to WAL before MemTable
+  - **Durability**: WAL write ensures crash recovery capability
+  - **Ordering**: Sequence numbers maintain operation order across restarts
+  - **Performance**: WAL writes are buffered for efficiency
+- **MemTable Management**: Automatic flushing when size threshold exceeded
+  - **Threshold**: Configurable maximum size (default: 64MB)
+  - **Flush Process**: Convert to SSTable, create new MemTable, rotate WAL
+  - **Coordination**: WAL rotation ensures new operations go to fresh WAL file
+- **Recovery Mechanism**: Automatic reconstruction from WAL on startup
+  - **WAL Replay**: Uses existing WAL recovery mechanism
+  - **State Restoration**: MemTable populated with recovered operations
+  - **Sequence Continuity**: Sequence numbers continue from highest recovered value
+- **Lookup Optimization**: MemTable-first search for optimal read performance
+  - **Order**: MemTable → SSTables (newest first)
+  - **Performance**: MemTable hits are O(log n), SSTable searches are O(log n) per level
+  - **Consistency**: Most recent value always returned due to search order
 
 ### Logging and Observability
 - **Structured logging** with `tracing` crate
