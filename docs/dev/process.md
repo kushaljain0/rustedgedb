@@ -7,6 +7,7 @@
 4. [Coding Principles](#coding-principles)
 5. [Spec-Driven Development Workflow](#spec-driven-development-workflow)
 6. [Release Governance](#release-governance)
+7. [Learning from Mistakes](#learning-from-mistakes)
 
 ---
 
@@ -328,3 +329,26 @@ mod tests {
 - **Documentation coverage** 100% for public APIs
 
 This playbook ensures consistent, high-quality development practices across the RustEdgeDB project.
+
+---
+
+## Learning from Mistakes
+
+### Documenting Mistakes
+- **`docs/lessons-learned.md`**: Comprehensive record of bugs, issues, and their solutions.
+- **Include**:
+  - **Bug description**
+  - **Root cause analysis**
+  - **Solution steps**
+  - **Impact on users**
+  - **Preventive measures**
+
+### Analyzing Mistakes
+- **Identify patterns** in recurring issues
+- **Understand why** they occurred
+- **Document** findings for future reference
+
+### Preventing Mistakes
+- **Code reviews** for potential issues
+- **Testing** for edge cases
+- **Documentation** for common pitfalls
