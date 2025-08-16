@@ -5,7 +5,7 @@ mod tests {
     #[test]
     fn test_project_structure() {
         // Basic test to ensure the project structure is correct
-        assert!(true, "Project structure is valid");
+        // Project structure is valid
     }
 
     #[test]
@@ -13,7 +13,7 @@ mod tests {
         // Test that we're using Rust 2024 edition
         // This will be verified by the compiler
         let _edition_check = "2024";
-        assert!(true, "Rust edition check passed");
+        // Rust edition check passed
     }
 
     #[test]

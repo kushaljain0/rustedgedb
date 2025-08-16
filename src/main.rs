@@ -3,6 +3,7 @@
 //! This is the main entry point for the RustEdgeDB application.
 
 pub mod memtable;
+pub mod wal;
 
 fn main() {
     println!("RustEdgeDB - Edge-First Database Engine");
