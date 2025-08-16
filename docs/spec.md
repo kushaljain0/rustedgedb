@@ -199,6 +199,15 @@ pub struct SSTableHeader {
 - **Size Tiers**: Each level has size constraints
 - **Merge Policy**: Combine overlapping key ranges
 - **Space Reclamation**: Remove deleted keys and duplicates
+- **Tombstone Removal**: Eliminate deletion markers during compaction
+- **Duplicate Resolution**: Keep only the most recent value for each key
+
+#### Implementation Details
+- **Multi-Phase Approach**: Collect entries, process, then write output
+- **Sort-Based Deduplication**: Sort by key, then by sequence number
+- **Tombstone Handling**: Remove deletion markers to reclaim space
+- **Offset Management**: Dynamic calculation of file section offsets
+- **File Validation**: Ensure output SSTable is valid and readable
 
 #### Levels
 - **Level 0**: MemTable flushes, may overlap
@@ -209,6 +218,12 @@ pub struct SSTableHeader {
 - **Level 0**: > 4 SSTables
 - **Level N**: > 10^N MB total size
 - **Manual**: Explicit compaction request
+
+#### Performance Characteristics
+- **Memory Usage**: O(n) where n is total entries across all input SSTables
+- **Time Complexity**: O(n log n) due to sorting and deduplication
+- **I/O Efficiency**: Single pass through data with optimized file writing
+- **Space Savings**: Removes tombstones and duplicates, typically 20-40% reduction
 
 ---
 

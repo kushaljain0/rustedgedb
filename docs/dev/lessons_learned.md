@@ -3,10 +3,12 @@
 ## Table of Contents
 1. [MemTable Implementation](#memtable-implementation)
 2. [WAL Implementation](#wal-implementation)
-3. [Common Rust Patterns](#common-rust-patterns)
-4. [Thread Safety Patterns](#thread-safety-patterns)
-5. [Testing Best Practices](#testing-best-practices)
-6. [Documentation Workflow](#documentation-workflow)
+3. [SSTable Implementation](#sstable-implementation)
+4. [Compaction Implementation](#compaction-implementation)
+5. [Common Rust Patterns](#common-rust-patterns)
+6. [Thread Safety Patterns](#thread-safety-patterns)
+7. [Testing Best Practices](#testing-best-practices)
+8. [Documentation Workflow](#documentation-workflow)
 
 ---
 
@@ -214,6 +216,222 @@ fn test_wal_corruption_handling() {
 2. **Validate recovery**: Ensure all valid data is recovered
 3. **Test edge cases**: Empty files, single records, large records
 4. **Use tempfile**: Temporary directories for isolated testing
+
+---
+
+## SSTable Implementation
+
+### **File Format Design and Validation**
+
+#### Problem Encountered
+Need to design a binary file format that's both efficient and recoverable, with proper header/footer validation.
+
+#### Root Cause
+- **Complex file structure**: Multiple sections (header, bloom filter, data, index, footer)
+- **Offset management**: Need to calculate and update offsets during writing
+- **Validation**: Must detect corrupted or invalid files
+- **Recovery**: Need to handle partial writes and corruption
+
+#### Solution Implemented
+Structured file format with validation:
+```rust
+pub struct SSTableHeader {
+    magic: [u8; 8],           // "RUSTEDGE" magic number
+    version: u32,              // File format version
+    entry_count: u32,          // Number of key-value pairs
+    index_offset: u64,         // Offset to index section
+    bloom_filter_offset: u64,  // Offset to bloom filter
+    data_offset: u64,          // Offset to data section
+    compression_type: u8,      // Compression algorithm
+    reserved: [u8; 31],       // Reserved for future use
+}
+```
+
+#### Key Learnings
+1. **Magic numbers**: Use distinctive magic numbers for file identification
+2. **Versioning**: Include version field for future format compatibility
+3. **Offset management**: Calculate offsets during writing, update header at end
+4. **Validation**: Check magic numbers and reasonable bounds on startup
+
+---
+
+## Compaction Implementation
+
+### **Multi-SSTable Merging Strategy**
+
+#### Problem Encountered
+Need to merge multiple SSTables while maintaining sorted order, removing tombstones, and keeping only the most recent values.
+
+#### Root Cause
+- **Complex merging**: Multiple input files with overlapping key ranges
+- **Tombstone handling**: Deleted keys must be removed during compaction
+- **Duplicate resolution**: Same key may exist in multiple SSTables
+- **Sorting**: Output must maintain sorted key order
+- **Memory efficiency**: Can't load all data into memory at once
+
+#### Solution Implemented
+Two-phase compaction approach:
+```rust
+pub fn compact_sstables<P: AsRef<Path>>(&self, input_paths: &[P]) -> CompactionResult<PathBuf> {
+    // Phase 1: Collect all entries from input SSTables
+    let mut all_entries = Vec::new();
+    for (i, path) in input_paths.iter().enumerate() {
+        // Read entries and add source SSTable index
+    }
+    
+    // Phase 2: Remove tombstones and duplicates
+    let final_entries = self.remove_tombstones_and_duplicates(all_entries)?;
+    
+    // Phase 3: Write compacted output
+    self.write_compacted_sstable(&mut writer, final_entries)?;
+}
+```
+
+#### Key Learnings
+1. **Source tracking**: Track which SSTable each entry came from for debugging
+2. **Two-phase approach**: Separate collection from processing for clarity
+3. **Tombstone removal**: Remove deletions during compaction to reclaim space
+4. **Duplicate resolution**: Keep highest sequence number for each key
+
+### **Tombstone and Duplicate Removal**
+
+#### Problem Encountered
+Need efficient algorithm to remove tombstones and keep only the most recent value for each key.
+
+#### Root Cause
+- **Sorting complexity**: Must sort by key, then by sequence number
+- **Memory usage**: Storing all entries can be memory-intensive
+- **Algorithm efficiency**: O(n log n) sorting for large datasets
+- **Edge cases**: Handle empty inputs, single entries, all tombstones
+
+#### Solution Implemented
+Sort-based deduplication:
+```rust
+fn remove_tombstones_and_duplicates(
+    &self,
+    mut entries: Vec<CompactionEntry>,
+) -> CompactionResult<Vec<CompactionEntry>> {
+    // Sort by key, then by sequence number (descending)
+    entries.sort_by(|a, b| {
+        a.key.cmp(&b.key)
+            .then_with(|| b.sequence_number.cmp(&a.sequence_number))
+    });
+    
+    let mut final_entries = Vec::new();
+    let mut current_key: Option<Vec<u8>> = None;
+    
+    for entry in entries {
+        if current_key != Some(entry.key.clone()) {
+            // New key, add it if it's not a tombstone
+            if !entry.is_deletion() {
+                final_entries.push(entry.clone());
+            }
+            current_key = Some(entry.key);
+        }
+        // Skip duplicates (we already have the most recent)
+    }
+    
+    Ok(final_entries)
+}
+```
+
+#### Key Learnings
+1. **Sorting strategy**: Sort by key first, then by sequence number descending
+2. **Single pass**: Process entries in sorted order to avoid multiple iterations
+3. **Tombstone handling**: Only add non-tombstone entries to final result
+4. **Memory efficiency**: Process in single pass rather than multiple collections
+
+### **File Writing and Offset Management**
+
+#### Problem Encountered
+Need to write compacted data while managing file offsets for header, bloom filter, data, and index sections.
+
+#### Root Cause
+- **Unknown sizes**: Can't know final sizes until all data is written
+- **Offset dependencies**: Index and bloom filter offsets depend on data size
+- **File positioning**: Need to seek back and forth to update headers
+- **Atomicity**: File must be consistent even if writing fails
+
+#### Solution Implemented
+Placeholder-based writing with final updates:
+```rust
+fn write_compacted_sstable(
+    &self,
+    writer: &mut BufWriter<File>,
+    entries: Vec<CompactionEntry>,
+) -> CompactionResult<()> {
+    // Write header placeholder
+    let header_placeholder = vec![0u8; header_size];
+    writer.write_all(&header_placeholder)?;
+    
+    // Write bloom filter placeholder
+    let bloom_filter_offset = writer.stream_position()?;
+    let bloom_filter_placeholder = vec![0u8; bloom_filter_size];
+    writer.write_all(&bloom_filter_placeholder)?;
+    
+    // Write data section
+    let data_offset = writer.stream_position()?;
+    // ... write entries ...
+    
+    // Write index section
+    let index_offset = writer.stream_position()?;
+    // ... write index ...
+    
+    // Update bloom filter and header with final offsets
+    writer.seek(SeekFrom::Start(bloom_filter_offset))?;
+    writer.write_all(bloom_filter.bits())?;
+    
+    writer.seek(SeekFrom::Start(0))?;
+    header.write(writer)?;
+}
+```
+
+#### Key Learnings
+1. **Placeholder approach**: Write placeholders first, update with real data later
+2. **Offset tracking**: Use `stream_position()` to track current file position
+3. **Seek operations**: Seek back to update headers and metadata
+4. **Atomic updates**: Update all metadata at the end for consistency
+
+### **Testing Compaction Correctness**
+
+#### Problem Encountered
+Need comprehensive tests to verify compaction behavior: tombstone removal, duplicate resolution, sorting, and file format.
+
+#### Root Cause
+- **Complex behavior**: Multiple input files with various scenarios
+- **Edge cases**: Empty inputs, all tombstones, duplicate keys
+- **File validation**: Must verify output SSTable is valid and readable
+- **Performance**: Tests should run quickly for development feedback
+
+#### Solution Implemented
+Comprehensive test suite with realistic scenarios:
+```rust
+#[test]
+fn test_compaction_removes_tombstones() {
+    // Test that deleted keys are removed during compaction
+}
+
+#[test]
+fn test_compaction_guarantees_sorted_order() {
+    // Test that output maintains sorted key order
+}
+
+#[test]
+fn test_compaction_keeps_most_recent_value() {
+    // Test that highest sequence number wins
+}
+
+#[test]
+fn test_compaction_creates_valid_sstable() {
+    // Test that output can be opened and read
+}
+```
+
+#### Key Learnings
+1. **Realistic test data**: Use actual MemTable data rather than mock data
+2. **Multiple scenarios**: Test various input combinations and edge cases
+3. **Output validation**: Verify that compacted SSTable is valid and readable
+4. **Performance testing**: Ensure tests run quickly for development workflow
 
 ---
 

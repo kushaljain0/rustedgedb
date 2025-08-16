@@ -284,7 +284,7 @@ pub struct BloomFilter {
 impl BloomFilter {
     /// Create a new bloom filter
     pub fn new(size: usize, hash_count: usize) -> Self {
-        let byte_size = (size + 7) / 8; // Round up to nearest byte
+        let byte_size = size.div_ceil(8); // Round up to nearest byte
         Self {
             bits: vec![0; byte_size],
             size,
@@ -372,6 +372,7 @@ impl SSTable {
         // Create the file
         let file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .read(true)
             .open(&path)
@@ -481,11 +482,9 @@ impl SSTable {
 
         // Read bloom filter
         file.seek(SeekFrom::Start(header.bloom_filter_offset))?;
-        let bloom_filter_size = if header.index_offset > header.bloom_filter_offset {
-            header.index_offset - header.bloom_filter_offset
-        } else {
-            0
-        };
+        let bloom_filter_size = header
+            .index_offset
+            .saturating_sub(header.bloom_filter_offset);
 
         let mut bloom_filter_bits = vec![0u8; bloom_filter_size as usize];
         if bloom_filter_size > 0 {
@@ -717,7 +716,7 @@ mod tests {
             .filter(|_| {
                 sstable
                     .bloom_filter
-                    .might_contain(&format!("random_key_{}", rand::random::<u32>()).as_bytes())
+                    .might_contain(format!("random_key_{}", rand::random::<u32>()).as_bytes())
             })
             .count();
 
