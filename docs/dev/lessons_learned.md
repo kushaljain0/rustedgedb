@@ -279,6 +279,46 @@ data.binary_search_by(|e| e.key.as_slice().cmp(entry.key.as_slice()))
 - Clippy catches these inefficiencies
 - Following clippy suggestions leads to better code
 
+### **Compilation and Type System Challenges**
+
+#### Problem
+```rust
+// Type mismatch in arithmetic operations
+let mut offset = 0; // usize
+offset += n; // n is usize, but offset needs to be i64 for seek operations
+```
+
+#### Solution
+```rust
+// Explicit type annotation and conversion
+let mut offset: i64 = 0;
+offset += n as i64;
+```
+
+#### Learning
+- **Explicit types**: Use type annotations when Rust can't infer the right type
+- **Type conversions**: Use `as` for safe numeric conversions
+- **Seek operations**: File seeking requires `i64` for relative positioning
+
+#### Move Semantics with File Handles
+
+#### Problem
+```rust
+// Can't move out of mutable reference
+drop(self.file); // Error: cannot move out of `self.file`
+```
+
+#### Solution
+```rust
+// Reassign instead of moving
+self.file = BufWriter::new(new_file);
+```
+
+#### Learning
+- **File handle management**: Reassign file handles rather than moving them
+- **Resource cleanup**: Let Rust's drop system handle cleanup automatically
+- **Mutable references**: Be careful with move operations on borrowed data
+
 ---
 
 ## Thread Safety Patterns
@@ -481,6 +521,55 @@ git commit -m "docs(spec): update MemTable design to use sorted vector"
 3. **Checksums**: Add CRC32 validation for enhanced corruption detection
 4. **Parallel recovery**: Recover multiple WAL files concurrently
 5. **WAL rotation**: Implement log rotation to prevent single large files
+
+### **Performance and Memory Considerations**
+
+#### **Buffer Size Choices**
+- **Corruption recovery buffer**: 1024 bytes provides good balance between memory usage and seeking efficiency
+- **WAL buffering**: `BufWriter` automatically handles optimal buffer sizes
+- **Memory allocation**: Pre-allocate vectors for key/value data to avoid repeated allocations
+
+#### **Size Limits and Validation**
+```rust
+// Reasonable limits prevent abuse and improve recovery
+if key_len > 1024 * 1024 || value_len > 100 * 1024 * 1024 {
+    return Err(WALError::InvalidRecord(format!(
+        "Invalid record size: key_len={}, value_len={}", key_len, value_len
+    )));
+}
+```
+- **Key limit**: 1MB prevents extremely long keys that could cause issues
+- **Value limit**: 100MB balances flexibility with memory safety
+- **Recovery efficiency**: Smaller limits make corruption recovery faster
+
+#### **Memory Allocation Patterns**
+- **Header parsing**: Fixed-size arrays for headers avoid dynamic allocation
+- **Data reading**: Pre-allocate vectors based on header information
+- **Error handling**: Minimize allocations in error paths
+
+### **Testing Infrastructure Insights**
+
+#### **tempfile Crate Usage**
+- **Isolated testing**: Each test gets its own temporary directory
+- **Automatic cleanup**: Temporary files are automatically removed
+- **Cross-platform**: Works consistently across different operating systems
+- **Performance**: Faster than creating/deleting files in test directories
+
+#### **Corruption Simulation Techniques**
+```rust
+// Inject corruption by appending garbage data
+let mut file = OpenOptions::new().append(true).open(&wal_path).unwrap();
+file.write_all(b"corrupted data here").unwrap();
+```
+- **Realistic testing**: Simulates actual corruption scenarios
+- **Recovery validation**: Ensures recovery mechanisms work correctly
+- **Edge case coverage**: Tests boundary conditions and error handling
+
+#### **Recovery Validation Strategies**
+- **Data integrity**: Verify all valid records are recovered
+- **Corruption handling**: Ensure recovery continues after corruption
+- **Sequence continuity**: Validate sequence numbers are maintained
+- **Performance testing**: Measure recovery time for large WAL files
 
 ### **Implementation Notes**
 - **Skip list**: Would require careful design to avoid borrowing issues
