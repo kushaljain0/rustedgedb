@@ -707,6 +707,181 @@ git commit -m "docs(spec): update MemTable design to use sorted vector"
 
 ---
 
+## Engine Implementation
+
+### **Documentation-First Workflow Violation**
+
+#### Problem Encountered
+Initially implemented the Engine without updating the specification first, violating the project's "Documentation First" principle.
+
+#### Root Cause
+- **Rushed implementation**: Started coding before updating `docs/spec.md`
+- **Workflow violation**: Did not follow the spec-driven development process
+- **Context loss**: Implementation details not documented for future reference
+
+#### Solution Implemented
+1. **Retroactive documentation**: Updated `docs/spec.md` with complete Engine specification
+2. **API documentation**: Documented all public methods and coordination patterns
+3. **Invariants documentation**: Added Engine-specific guarantees and verification strategies
+4. **Testing strategy**: Documented test coverage and patterns
+
+#### Key Learnings
+1. **Always update documentation first**: Follow the "Documentation First" principle
+2. **Spec-driven development**: Implementation should follow documented specification
+3. **Workflow compliance**: Adhere to project development rules even when excited to code
+4. **Retroactive documentation**: Better late than never, but avoid this pattern
+
+#### Prevention
+- **Check cursor rules** before starting any implementation
+- **Update specification** before writing any code
+- **Follow established workflow** even for "simple" features
+- **Document design decisions** as they're made, not after
+
+---
+
+### **Async Constructor Pattern**
+
+#### Problem Encountered
+Need to make Engine constructors async to support proper initialization and recovery.
+
+#### Root Cause
+- **Recovery operations**: WAL recovery requires async file operations
+- **Test compatibility**: Tests need to await Engine creation
+- **Initialization complexity**: Engine setup involves multiple async operations
+
+#### Solution Implemented
+```rust
+// Make constructors async
+pub async fn new<P: AsRef<Path>>(data_dir: P) -> EngineResult<Self>
+pub async fn with_config(config: EngineConfig) -> EngineResult<Self>
+
+// Update all tests to await creation
+let engine = Engine::new(temp_dir.path()).await.unwrap();
+```
+
+#### Key Learnings
+1. **Async constructors**: Can be necessary for complex initialization
+2. **Test compatibility**: All tests must await async constructors
+3. **Initialization order**: Recovery operations must complete before Engine is usable
+4. **Error handling**: Constructor errors must be properly propagated
+
+#### Prevention
+- **Design async patterns** from the beginning for complex initialization
+- **Consider test patterns** when designing public APIs
+- **Plan error handling** for all initialization scenarios
+
+---
+
+### **Component Coordination Complexity**
+
+#### Problem Encountered
+Need to coordinate multiple components (WAL, MemTable, SSTable) while maintaining consistency.
+
+#### Root Cause
+- **Multiple responsibilities**: Engine must manage WAL writes, MemTable operations, and SSTable coordination
+- **State consistency**: All components must remain in sync
+- **Error propagation**: Errors in one component must not corrupt others
+- **Recovery complexity**: Must recover consistent state across all components
+
+#### Solution Implemented
+1. **Clear responsibility separation**: Each component handles its own domain
+2. **Coordinated operations**: Engine orchestrates but doesn't duplicate logic
+3. **Error handling**: Comprehensive error types with proper propagation
+4. **Recovery mechanism**: Use existing WAL recovery for consistency
+
+#### Key Learnings
+1. **Orchestration vs. implementation**: Engine coordinates, components implement
+2. **Error boundaries**: Clear error handling at component boundaries
+3. **Recovery strategy**: Leverage existing recovery mechanisms when possible
+4. **State management**: Centralized state tracking for consistency
+
+#### Prevention
+- **Design component boundaries** clearly before implementation
+- **Plan error handling** across component interactions
+- **Consider recovery scenarios** during initial design
+- **Document coordination patterns** for future reference
+
+---
+
+### **WAL Rotation Strategy**
+
+#### Problem Encountered
+Need to rotate WAL files after MemTable flushes to prevent single large WAL files.
+
+#### Root Cause
+- **File size growth**: Single WAL file grows indefinitely
+- **Recovery complexity**: Large WAL files slow down recovery
+- **Storage efficiency**: Multiple smaller files are easier to manage
+
+#### Solution Implemented
+```rust
+fn rotate_wal(&mut self) -> EngineResult<()> {
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    
+    let new_wal_path = self.config.data_dir.join(format!("wal_{}.log", timestamp));
+    let new_wal = WAL::new(&new_wal_path)?;
+    self.wal = new_wal;
+    Ok(())
+}
+```
+
+#### Key Learnings
+1. **WAL rotation timing**: Rotate after successful MemTable flush
+2. **File naming**: Use timestamps for unique identification
+3. **Recovery order**: Must replay WAL files in chronological order
+4. **Resource management**: Proper cleanup of old WAL files
+
+#### Prevention
+- **Plan file management** strategy before implementation
+- **Consider recovery implications** of file organization
+- **Document file naming conventions** for consistency
+- **Plan cleanup strategies** for old files
+
+---
+
+### **Sequence Number Management**
+
+#### Problem Encountered
+Need to maintain sequence numbers across all operations and component restarts.
+
+#### Root Cause
+- **Component isolation**: Each component has its own sequence number
+- **Recovery continuity**: Sequence numbers must continue after restart
+- **Consistency**: All operations must have unique, ordered sequence numbers
+
+#### Solution Implemented
+```rust
+// Centralized sequence number management
+let sequence_number = {
+    let mut seq = self.sequence_number.write().unwrap();
+    *seq += 1;
+    *seq
+};
+
+// Recovery updates sequence number from WAL
+{
+    let mut seq = self.sequence_number.write().unwrap();
+    *seq = self.wal.sequence_number();
+}
+```
+
+#### Key Learnings
+1. **Centralized management**: Single source of truth for sequence numbers
+2. **Recovery synchronization**: Update sequence numbers from recovered state
+3. **Thread safety**: Use RwLock for shared sequence number access
+4. **Continuity**: Sequence numbers must be monotonically increasing
+
+#### Prevention
+- **Design sequence number strategy** before implementation
+- **Plan recovery synchronization** for all stateful components
+- **Consider thread safety** for shared state
+- **Document sequence number guarantees** for users
+
+---
+
 ## Performance Considerations
 
 ### **MemTable Specific**
@@ -799,7 +974,7 @@ file.write_all(b"corrupted data here").unwrap();
 ---
 
 **Last Updated**: 2025-01-08  
-**Version**: 2.0  
+**Version**: 3.0  
 **Maintainer**: Development Team  
 
 ---
