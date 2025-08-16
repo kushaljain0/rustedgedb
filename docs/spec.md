@@ -137,33 +137,59 @@ Each WAL record follows this binary structure:
 ```rust
 pub struct SSTable {
     file: File,
+    path: PathBuf,
+    header: SSTableHeader,
     index: SSTableIndex,
     bloom_filter: BloomFilter,
-    compression: CompressionType,
 }
 
 pub struct SSTableIndex {
-    key_offsets: Vec<(Vec<u8>, u64)>, // (key, offset)
+    entries: Vec<IndexEntry>,
     bloom_filter_bits: Vec<u8>,
     compression_metadata: CompressionMetadata,
+}
+
+pub struct IndexEntry {
+    key: Vec<u8>,
+    offset: u64,
+    key_size: u32,
+    value_size: u32,
+}
+
+pub struct SSTableHeader {
+    magic: [u8; 8],           // "RUSTEDGE" magic number
+    version: u32,              // File format version
+    entry_count: u32,          // Number of key-value pairs
+    index_offset: u64,         // Offset to index section
+    bloom_filter_offset: u64,  // Offset to bloom filter
+    data_offset: u64,          // Offset to data section
+    compression_type: u8,      // Compression algorithm
+    reserved: [u8; 31],       // Reserved for future use
 }
 ```
 
 #### Properties
 - **Immutable**: Once written, never modified
-- **Sorted**: Keys maintained in sorted order
-- **Compressed**: Configurable compression (LZ4, Zstd)
-- **Indexed**: Sparse index for fast key location
-- **Bloom Filtered**: Fast negative lookups
+- **Sorted**: Keys maintained in sorted order using binary search
+- **Compressed**: Configurable compression (None, LZ4, Zstd)
+- **Indexed**: Sparse index for fast key location with O(log n) lookup
+- **Bloom Filtered**: Fast negative lookups with configurable false positive rates
 
 #### File Format
 ```
 [Header: 64 bytes]
-[Bloom Filter: variable]
-[Sparse Index: variable]
-[Data Blocks: variable]
+[Bloom Filter: variable size]
+[Data Section: variable size]
+[Index Section: variable size]
 [Footer: 32 bytes]
 ```
+
+#### Implementation Details
+- **Binary Search**: Index entries sorted by key for O(log n) lookups
+- **Bloom Filter**: 10x size with 3 hash functions for efficient negative lookups
+- **Error Handling**: Comprehensive error types using thiserror crate
+- **File Validation**: Magic number and format validation on open
+- **Tombstone Support**: Deletion markers preserved in data structure
 
 ### 4. Compaction
 **Purpose**: Merge multiple SSTables into fewer, larger files
@@ -426,17 +452,37 @@ mod wal_tests {
 mod sstable_tests {
     #[test]
     fn test_sstable_creation_and_reading() {
-        // Test file format
+        // Test file format and data persistence
     }
     
     #[test]
     fn test_bloom_filter_accuracy() {
-        // Test false positive rates
+        // Test false positive rates and key containment
     }
     
     #[test]
-    fn test_compression_and_decompression() {
-        // Test compression algorithms
+    fn test_compression_types() {
+        // Test compression algorithm selection
+    }
+    
+    #[test]
+    fn test_sstable_index() {
+        // Test binary search index functionality
+    }
+    
+    #[test]
+    fn test_sstable_file_format() {
+        // Test file structure and validation
+    }
+    
+    #[test]
+    fn test_sstable_empty_memtable() {
+        // Test error handling for empty input
+    }
+    
+    #[test]
+    fn test_sstable_header_footer() {
+        // Test header and footer serialization
     }
 }
 ```
@@ -458,6 +504,12 @@ fn test_batch_operations() {
 #[test]
 fn test_concurrent_access() {
     // Test thread safety
+}
+
+#[test]
+fn test_sstable_workflow() {
+    // Test MemTable → SSTable flush workflow
+    // Verify data persistence and tombstone handling
 }
 ```
 

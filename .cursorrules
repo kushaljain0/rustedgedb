@@ -4,6 +4,31 @@
 ## Project Context
 You are working on RustEdgeDB, a deterministic, embeddable, edge-first database engine implementing Spec v0.1 (Base Engine).
 
+## Documentation Reading Requirements
+**CRITICAL**: Before starting ANY task, you MUST read and understand all project documentation:
+
+1. **README.md** - Project overview, setup, and main documentation
+2. **docs/spec.md** - Database engine specification v0.1
+3. **docs/user/getting_started.md** - User guide and examples
+4. **docs/dev/process.md** - Development workflow and processes
+5. **docs/dev/coding_principles.md** - Code style and architecture guidelines
+6. **docs/dev/documentation_maintenance.md** - Documentation standards
+7. **docs/dev/lessons_learned.md** - Previous implementation insights
+
+**Documentation Reading Workflow**:
+- Always start by reading README.md for project context
+- Read spec.md to understand current feature scope
+- Review user guides for working examples
+- Check dev docs for implementation patterns
+- Reference lessons learned to avoid repeating mistakes
+- Only proceed with implementation after full documentation review
+
+**Context Preservation**:
+- Maintain awareness of all documented features and constraints
+- Reference specific documentation sections when making decisions
+- Update documentation before implementing new features
+- Ensure code examples in docs actually compile and work
+
 ## Core Principles
 - **Documentation First**: Always update documentation before implementing features
 - **Quality Gates**: All code must pass cargo check, fmt, clippy, and tests

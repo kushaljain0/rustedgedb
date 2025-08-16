@@ -432,7 +432,7 @@ impl SSTable {
         footer.write(&mut writer)?;
 
         // Update bloom filter
-        let bloom_filter_size = bloom_filter.bits().len();
+        let _bloom_filter_size = bloom_filter.bits().len();
         writer.seek(SeekFrom::Start(bloom_filter_offset))?;
         writer.write_all(bloom_filter.bits())?;
 
