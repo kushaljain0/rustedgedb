@@ -1,6 +1,10 @@
 # RustEdgeDB
 
-RustEdgeDB — a deterministic, embeddable, edge-first database engine.
+<div align="center">
+  <img src="assets/logo.svg" alt="RustEdgeDB Logo" width="200" height="200">
+  
+  **RustEdgeDB** — a deterministic, embeddable, edge-first database engine.
+</div>
 
 **🎉 v0.1.0 RELEASED - Base Engine Complete!**  
 **✅ All 85 tests passing | 🚀 Production Ready**
@@ -12,6 +16,8 @@ RustEdgeDB — a deterministic, embeddable, edge-first database engine.
 
 ## Project Structure
 
+- `assets/` - Logo and visual assets
+  - `logo.svg` - Main logo (200x200px)
 - `src/` - Main source code
   - `memtable.rs` - In-memory table implementation with sorted vector storage
   - `wal.rs` - Write-Ahead Log for durability and crash recovery
