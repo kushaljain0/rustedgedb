@@ -10,6 +10,7 @@ RustEdgeDB — a deterministic, embeddable, edge-first database engine.
   - `dev/` - Developer documentation
     - `coding_principles.md` - Coding principles and guidelines
     - `process.md` - Development process and workflow
+    - `lessons_learned.md` - Lessons learned from implementation challenges
   - `user/` - User documentation
     - `getting_started.md` - Getting started guide
 - `tests/` - Integration tests
