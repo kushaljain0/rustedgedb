@@ -309,7 +309,7 @@ async fn retrieve_user_data(db: &Database, user_id: &[u8]) -> Result<Option<Vec<
 ### Spec v0.1 Scope
 **Important**: RustEdgeDB v0.1 implements a **base engine** with limited functionality:
 
-#### ✅ **Supported Features**
+#### **Supported Features**
 - **In-Memory Storage**: Fast MemTable operations
 - **WAL Persistence**: Crash recovery and durability
 - **Basic Operations**: `put()`, `get()`, `delete()`
@@ -317,7 +317,7 @@ async fn retrieve_user_data(db: &Database, user_id: &[u8]) -> Result<Option<Vec<
 - **Compression**: LZ4 and Zstd support
 - **Bloom Filters**: Fast negative lookups
 
-#### ❌ **Not Yet Supported**
+#### **Not Yet Supported**
 - **Persistent Storage**: SSTables and compaction (in-memory only)
 - **Advanced Queries**: Range queries, filtering, aggregation
 - **Transactions**: ACID transaction support
@@ -325,7 +325,7 @@ async fn retrieve_user_data(db: &Database, user_id: &[u8]) -> Result<Option<Vec<
 - **Network Protocol**: Remote client connections
 - **Replication**: Data distribution and synchronization
 
-#### 🔄 **Work in Progress**
+#### **Work in Progress**
 - **SSTable Implementation**: Persistent storage layer
 - **Compaction Engine**: Automatic space reclamation
 - **Performance Optimization**: Benchmarking and tuning
@@ -414,4 +414,4 @@ let options = DatabaseOptions {
 };
 ```
 
-**Ready to get started?** Follow the examples above and start building with RustEdgeDB! 🚀
+**Ready to get started?** Follow the examples above and start building with RustEdgeDB!

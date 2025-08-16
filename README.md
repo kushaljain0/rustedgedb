@@ -6,8 +6,8 @@
   **RustEdgeDB** — a deterministic, embeddable, edge-first database engine.
 </div>
 
-**🎉 v0.1.0 RELEASED - Base Engine Complete!**  
-**✅ All 85 tests passing | 🚀 Production Ready**
+**v0.1.0 RELEASED - Base Engine Complete!**  
+**All 85 tests passing | Production Ready**
 
 [![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org/)
 [![Tests](https://img.shields.io/badge/tests-85%20passing-brightgreen.svg)](https://github.com/kushaljain0/rustedgedb)
@@ -35,7 +35,7 @@
 
 ## Current Implementation Status
 
-### ✅ Implemented Components
+### Implemented Components
 - **MemTable**: In-memory table with sorted vector storage, O(log n) operations
 - **WAL**: Write-Ahead Log with append-only file, corruption recovery, and MemTable replay
 - **SSTable**: Immutable, persistent storage with corrected file format and index offsets
@@ -44,17 +44,17 @@
 - **Core Infrastructure**: Error handling, logging, testing framework
 - **Integration Tests**: Comprehensive test suite covering all components (85 tests passing)
 
-### 🔧 Recently Fixed Issues
+### Recently Fixed Issues
 - **SSTable Corruption**: Resolved index offset calculation bugs in both main and compaction engines
 - **Bloom Filter Sizing**: Fixed placeholder size mismatches causing file corruption
 - **Multiple SSTable Creation**: Fixed test configuration to properly trigger MemTable flushes
 
-### 📋 Planned
+### Planned
 - **API Layer**: Public interface for database operations
 - **Performance Optimizations**: Advanced compression, parallel compaction
 - **Monitoring & Metrics**: Performance counters and health checks
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 # Clone the repository
@@ -87,14 +87,14 @@ cargo fmt
 cargo clippy
 ```
 
-## 📋 Release Notes
+## Release Notes
 
 **v0.1.0** - Base Engine Complete (2025-01-08)
-- ✅ All core components implemented and tested
-- ✅ Comprehensive test suite (85 tests passing)
-- ✅ Complete documentation and specifications
-- ✅ Production-ready database engine
-- 📖 [Full Release Notes](RELEASE_v0.1.0.md)
+- All core components implemented and tested
+- Comprehensive test suite (85 tests passing)
+- Complete documentation and specifications
+- Production-ready database engine
+- [Full Release Notes](RELEASE_v0.1.0.md)
 
 ## CI/CD
 
