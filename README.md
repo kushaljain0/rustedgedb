@@ -5,6 +5,8 @@ RustEdgeDB — a deterministic, embeddable, edge-first database engine.
 ## Project Structure
 
 - `src/` - Main source code
+  - `memtable.rs` - In-memory table implementation with sorted vector storage
+  - `wal.rs` - Write-Ahead Log for durability and crash recovery
 - `docs/` - Documentation
   - `spec.md` - Specification document with versioned sections
   - `dev/` - Developer documentation
@@ -14,6 +16,22 @@ RustEdgeDB — a deterministic, embeddable, edge-first database engine.
   - `user/` - User documentation
     - `getting_started.md` - Getting started guide
 - `tests/` - Integration tests
+
+## Current Implementation Status
+
+### ✅ Implemented Components
+- **MemTable**: In-memory table with sorted vector storage, O(log n) operations
+- **WAL**: Write-Ahead Log with append-only file, corruption recovery, and MemTable replay
+- **Core Infrastructure**: Error handling, logging, testing framework
+
+### 🚧 In Progress
+- **SSTable**: Immutable, persistent storage for flushed data
+- **Compaction Engine**: Leveled compaction strategy
+
+### 📋 Planned
+- **Database Engine**: Main coordination layer
+- **API Layer**: Public interface for database operations
+- **Performance Optimizations**: Bloom filters, compression
 
 ## Development
 

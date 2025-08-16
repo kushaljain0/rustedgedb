@@ -92,30 +92,43 @@ pub struct Entry {
 #### Structure
 ```rust
 pub struct WAL {
-    file: File,
-    buffer: Vec<u8>,
-    buffer_size: usize,
+    file: BufWriter<File>,
+    path: PathBuf,
     sequence_number: u64,
 }
 
-pub enum WALRecord {
-    Put { key: Vec<u8>, value: Vec<u8>, timestamp: u64 },
-    Delete { key: Vec<u8>, timestamp: u64 },
-    Flush { sequence_number: u64 },
+pub struct WALRecord {
+    pub key: Vec<u8>,
+    pub value: Option<Vec<u8>>, // None for deletions (tombstones)
+    pub timestamp: u64,
+    pub sequence_number: u64,
 }
 ```
 
 #### Properties
 - **Append-Only**: Sequential writes for maximum performance
-- **Buffered**: Batched writes with configurable buffer size
-- **Checksummed**: CRC32 validation for data integrity
-- **Truncatable**: Safe truncation after successful flush
+- **Buffered**: Uses BufWriter for efficient I/O operations
+- **Recoverable**: Automatic sequence number recovery on startup
+- **Truncatable**: Safe truncation after successful flush to SSTable
+- **Corruption Resilient**: Handles partial writes and seeks to next valid record
+
+#### Record Format
+Each WAL record follows this binary structure:
+```
+[Key Length: 4 bytes (u32, little-endian)]
+[Value Length: 4 bytes (u32, little-endian)] 
+[Timestamp: 8 bytes (u64, little-endian)]
+[Sequence Number: 8 bytes (u64, little-endian)]
+[Key Data: variable length]
+[Value Data: variable length (if value_len > 0)]
+```
 
 #### Durability Guarantees
 - **Write Ordering**: Records written in sequence number order
-- **Crash Recovery**: All committed writes recoverable
-- **Partial Writes**: Corrupted records detected and skipped
-- **Truncation Safety**: Only truncate after confirmed flush
+- **Crash Recovery**: All committed writes recoverable via `recover()` method
+- **Partial Writes**: Corrupted records detected and skipped during recovery
+- **Truncation Safety**: Only truncate after confirmed flush to SSTable
+- **Sequence Continuity**: Monotonically increasing sequence numbers for all operations
 
 ### 3. SSTable (Sorted String Table)
 **Purpose**: Immutable, persistent storage for flushed data
@@ -361,18 +374,48 @@ mod memtable_tests {
 #[cfg(test)]
 mod wal_tests {
     #[test]
-    fn test_wal_write_and_recovery() {
-        // Test WAL durability
+    fn test_wal_creation() {
+        // Test WAL initialization and file creation
     }
     
     #[test]
-    fn test_wal_corruption_handling() {
-        // Test error recovery
+    fn test_wal_put_and_get() {
+        // Test basic put operations and sequence numbering
+    }
+    
+    #[test]
+    fn test_wal_delete() {
+        // Test delete operations and tombstone creation
+    }
+    
+    #[test]
+    fn test_wal_recovery() {
+        // Test complete recovery workflow: write entries, restart, replay into MemTable
+    }
+    
+    #[test]
+    fn test_wal_sequence_numbers() {
+        // Test sequence number incrementing and continuity
     }
     
     #[test]
     fn test_wal_truncation() {
-        // Test safe truncation
+        // Test safe truncation after successful operations
+    }
+    
+    #[test]
+    fn test_wal_corruption_handling() {
+        // Test corruption detection and recovery mechanisms
+    }
+    
+    #[test]
+    fn test_wal_record_structure() {
+        // Test WALRecord creation and validation
+    }
+    
+    #[test]
+    fn test_wal_to_entry_conversion() {
+        // Test conversion from WALRecord to MemTable Entry
     }
 }
 ```
@@ -505,6 +548,20 @@ fn bench_compaction_speed(b: &mut Bencher) {
 - **Size Tracking**: Accurate byte-level monitoring with configurable limits
 - **Sequence Numbers**: Monotonically increasing for all operations (put, delete)
 - **Tombstone Support**: Deletions create entries with None values for proper LSM semantics
+
+### WAL Implementation
+- **File Management**: Uses `BufWriter<File>` for efficient buffered I/O operations
+  - **Rationale**: BufWriter provides automatic buffering for better performance
+  - **Trade-offs**: Requires explicit flush calls for durability guarantees
+  - **Recovery**: Automatic sequence number recovery from existing WAL files
+- **Record Format**: Binary format with fixed-size headers and variable-length data
+  - **Header**: 24 bytes total (key_len, value_len, timestamp, sequence_number)
+  - **Data**: Key and value bytes as specified in header
+  - **Validation**: Size limits (1MB key, 100MB value) prevent abuse
+- **Corruption Handling**: Robust recovery mechanisms for partial writes
+  - **Seek Recovery**: Attempts to find next valid record after corruption
+  - **Graceful Degradation**: Continues recovery from corruption points
+  - **Logging**: Comprehensive error logging for troubleshooting
 
 ### Error Handling
 - **Custom error types** using `thiserror`
