@@ -5,7 +5,7 @@ use tracing::{error, info, trace, warn};
 
 use crate::memtable::{MemTable, MemTableError};
 use crate::sstable::{CompressionType, SSTable, SSTableError};
-use crate::wal::{WAL, WALError, WALRecord};
+use crate::wal::{WAL, WALError};
 
 /// Errors that can occur during Engine operations
 #[derive(Error, Debug)]
