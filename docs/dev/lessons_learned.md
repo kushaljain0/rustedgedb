@@ -2,10 +2,11 @@
 
 ## Table of Contents
 1. [MemTable Implementation](#memtable-implementation)
-2. [Common Rust Patterns](#common-rust-patterns)
-3. [Thread Safety Patterns](#thread-safety-patterns)
-4. [Testing Best Practices](#testing-best-practices)
-5. [Documentation Workflow](#documentation-workflow)
+2. [WAL Implementation](#wal-implementation)
+3. [Common Rust Patterns](#common-rust-patterns)
+4. [Thread Safety Patterns](#thread-safety-patterns)
+5. [Testing Best Practices](#testing-best-practices)
+6. [Documentation Workflow](#documentation-workflow)
 
 ---
 
@@ -41,6 +42,178 @@ pub struct MemTable {
 - **Write Operations**: O(n) due to vector shifting
 - **Memory Usage**: Efficient for small to medium datasets
 - **Thread Safety**: Excellent with Arc + RwLock
+
+---
+
+## WAL Implementation
+
+### **File I/O and Buffering Strategy**
+
+#### Problem Encountered
+Initially considered using raw `File` operations for WAL writes, but this would require manual buffering and could lead to performance issues.
+
+#### Root Cause
+- **Raw file I/O**: Each write operation is a system call
+- **Manual buffering**: Complex to implement correctly
+- **Performance**: Multiple small writes become expensive
+- **Durability**: Need to ensure data is actually written to disk
+
+#### Solution Implemented
+Used `BufWriter<File>` for automatic buffering:
+```rust
+pub struct WAL {
+    file: BufWriter<File>,
+    path: PathBuf,
+    sequence_number: u64,
+}
+```
+
+#### Key Learnings
+1. **Use standard library buffering**: `BufWriter` provides efficient buffering automatically
+2. **Explicit flush calls**: Call `flush()` after critical writes for durability
+3. **File path management**: Store `PathBuf` for recovery operations
+4. **Sequence number tracking**: Maintain sequence numbers for crash recovery
+
+#### Performance Characteristics
+- **Write Operations**: Buffered for efficiency, explicit flush for durability
+- **Recovery**: O(n) where n is number of records
+- **Memory Usage**: Minimal overhead with BufWriter
+- **Durability**: Guaranteed with explicit flush calls
+
+---
+
+### **Binary Record Format Design**
+
+#### Problem Encountered
+Need to design a binary format that's both efficient and recoverable from corruption.
+
+#### Root Cause
+- **Variable-length data**: Keys and values can be any size
+- **Corruption resilience**: Must handle partial writes gracefully
+- **Recovery**: Need to find next valid record after corruption
+- **Validation**: Must detect invalid record sizes
+
+#### Solution Implemented
+Fixed-size header with variable-length data:
+```rust
+// Header: 24 bytes total
+[Key Length: 4 bytes (u32, little-endian)]
+[Value Length: 4 bytes (u32, little-endian)] 
+[Timestamp: 8 bytes (u64, little-endian)]
+[Sequence Number: 8 bytes (u64, little-endian)]
+[Key Data: variable length]
+[Value Data: variable length (if value_len > 0)]
+```
+
+#### Key Learnings
+1. **Fixed-size headers**: Make recovery and seeking easier
+2. **Little-endian encoding**: Consistent with most modern systems
+3. **Size validation**: Check key/value lengths to prevent abuse
+4. **Corruption detection**: Use size limits to identify invalid records
+
+#### Recovery Strategy
+```rust
+fn seek_to_next_record<R: Read + Seek>(&self, reader: &mut R) -> WALResult<()> {
+    // Look for potential record headers with reasonable lengths
+    // Seek to next valid record start
+    // Continue recovery from there
+}
+```
+
+---
+
+### **Error Handling and Recovery**
+
+#### Problem Encountered
+Need to handle various failure modes gracefully without losing data.
+
+#### Root Cause
+- **Partial writes**: System crashes during write operations
+- **File corruption**: Disk errors or incomplete writes
+- **Invalid data**: Malformed records or size mismatches
+- **Recovery complexity**: Must continue from corruption points
+
+#### Solution Implemented
+Comprehensive error handling with recovery mechanisms:
+```rust
+#[derive(Error, Debug)]
+pub enum WALError {
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
+    #[error("Invalid record format: {0}")]
+    InvalidRecord(String),
+    #[error("Corrupted WAL file: {0}")]
+    CorruptedFile(String),
+    #[error("MemTable error: {0}")]
+    MemTable(#[from] MemTableError),
+}
+```
+
+#### Key Learnings
+1. **Use thiserror**: Provides excellent error context and conversion
+2. **Recoverable vs fatal**: Distinguish between recoverable and fatal errors
+3. **Graceful degradation**: Continue recovery from corruption points
+4. **Comprehensive logging**: Log all recovery attempts for debugging
+
+---
+
+### **Sequence Number Management**
+
+#### Problem Encountered
+Need to maintain sequence numbers across WAL restarts and ensure continuity.
+
+#### Root Cause
+- **Crash recovery**: Must recover sequence numbers from existing WAL
+- **Continuity**: Sequence numbers must be monotonically increasing
+- **Validation**: Must detect sequence number mismatches
+- **Recovery**: Need to find highest sequence number in corrupted files
+
+#### Solution Implemented
+Automatic sequence number recovery on startup:
+```rust
+fn recover_sequence_number(&mut self) -> WALResult<()> {
+    // Read existing WAL file to find highest sequence number
+    // Continue from that point for new operations
+    // Handle corruption gracefully
+}
+```
+
+#### Key Learnings
+1. **Recover on startup**: Always scan existing WAL for sequence numbers
+2. **Handle corruption**: Stop at first corruption, use highest valid sequence
+3. **Validation**: Check sequence number continuity in write operations
+4. **Atomic updates**: Update sequence number only after successful write
+
+---
+
+### **Testing WAL Durability and Recovery**
+
+#### Problem Encountered
+Need to test crash recovery scenarios and corruption handling.
+
+#### Root Cause
+- **Crash simulation**: Difficult to simulate real system crashes
+- **Corruption testing**: Need to test various corruption scenarios
+- **Recovery validation**: Must ensure data integrity after recovery
+- **Edge cases**: Test boundary conditions and error scenarios
+
+#### Solution Implemented
+Comprehensive test suite with corruption simulation:
+```rust
+#[test]
+fn test_wal_corruption_handling() {
+    // Write valid records
+    // Corrupt file by appending garbage
+    // Test recovery succeeds despite corruption
+    // Verify valid records are recovered correctly
+}
+```
+
+#### Key Learnings
+1. **Test corruption scenarios**: Append garbage data to test recovery
+2. **Validate recovery**: Ensure all valid data is recovered
+3. **Test edge cases**: Empty files, single records, large records
+4. **Use tempfile**: Temporary directories for isolated testing
 
 ---
 
@@ -217,6 +390,12 @@ mod tests {
 2. ❌ Then updated documentation to match
 3. ✅ Should have been the reverse
 
+#### What Happened with WAL (Correct)
+1. ✅ Updated specification first with WAL design
+2. ✅ Implemented WAL according to specification
+3. ✅ Updated documentation to reflect actual implementation details
+4. ✅ Maintained consistency between spec and code
+
 #### Correct Workflow
 ```bash
 # 1. Update specification
@@ -260,6 +439,14 @@ git commit -m "docs(spec): update MemTable design to use sorted vector"
 - **Don't**: Ignore clippy warnings and rustc errors
 - **Do**: Use them to write better, more idiomatic code
 
+### **6. Complex File I/O Patterns**
+- **Don't**: Use raw file operations without proper buffering
+- **Do**: Use `BufWriter` for automatic buffering and explicit flush for durability
+
+### **7. Inadequate Corruption Recovery**
+- **Don't**: Fail fast on any corruption
+- **Do**: Implement graceful recovery mechanisms that can continue from corruption points
+
 ---
 
 ## Performance Considerations
@@ -288,6 +475,13 @@ git commit -m "docs(spec): update MemTable design to use sorted vector"
 4. **Compression** for large values
 5. **Metrics collection** for performance monitoring
 
+### **WAL-Specific Optimizations**
+1. **Batch WAL writes**: Group multiple operations into single WAL record
+2. **Compression**: Compress WAL records for large values
+3. **Checksums**: Add CRC32 validation for enhanced corruption detection
+4. **Parallel recovery**: Recover multiple WAL files concurrently
+5. **WAL rotation**: Implement log rotation to prevent single large files
+
 ### **Implementation Notes**
 - **Skip list**: Would require careful design to avoid borrowing issues
 - **Memory pooling**: Could reduce allocation overhead
@@ -298,7 +492,7 @@ git commit -m "docs(spec): update MemTable design to use sorted vector"
 ---
 
 **Last Updated**: 2025-01-08  
-**Version**: 1.0  
+**Version**: 2.0  
 **Maintainer**: Development Team  
 
 ---
