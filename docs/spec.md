@@ -50,9 +50,10 @@ RustEdgeDB v0.1 implements a **simple LSM-based key-value store** designed for:
 #### Structure
 ```rust
 pub struct MemTable {
-    data: BTreeMap<Vec<u8>, Entry>,
-    size_bytes: usize,
+    data: Arc<RwLock<Vec<Entry>>>,
+    size_bytes: Arc<RwLock<usize>>,
     max_size_bytes: usize,
+    sequence_number: Arc<RwLock<u64>>,
 }
 
 pub struct Entry {
@@ -64,10 +65,20 @@ pub struct Entry {
 ```
 
 #### Properties
-- **Ordered**: BTreeMap maintains sorted key order
+- **Ordered**: Sorted vector maintains sorted key order using binary search
 - **Bounded**: Configurable maximum size (default: 64MB)
 - **Mutable**: Supports in-place updates and deletions
 - **Fast**: O(log n) operations for all operations
+- **Thread-Safe**: Uses Arc + RwLock for concurrent access
+
+#### Implementation Details
+- **Data Structure**: Sorted vector with binary search for O(log n) operations
+- **Thread Safety**: Arc<RwLock<Vec<Entry>>> for shared mutable state
+- **Size Tracking**: Accurate byte-level size monitoring with configurable limits
+- **Sequence Numbers**: Monotonically increasing sequence numbers for all operations
+- **Tombstone Support**: Deletions create entries with None values
+- **Error Handling**: Comprehensive error types using thiserror crate
+- **Logging**: Structured logging with tracing crate for observability
 
 #### Lifecycle
 1. **Creation**: Empty MemTable with sequence number 0
@@ -294,18 +305,53 @@ pub struct DatabaseOptions {
 #[cfg(test)]
 mod memtable_tests {
     #[test]
-    fn test_memtable_insert_and_retrieve() {
-        // Test basic put/get operations
+    fn test_memtable_creation() {
+        // Test MemTable initialization and default values
     }
     
     #[test]
-    fn test_memtable_size_limits() {
-        // Test size boundary enforcement
+    fn test_memtable_put_and_get() {
+        // Test basic put/get operations and overwriting
     }
     
     #[test]
-    fn test_memtable_deletion() {
+    fn test_memtable_delete() {
         // Test delete and tombstone behavior
+    }
+    
+    #[test]
+    fn test_memtable_size_tracking() {
+        // Test size boundary enforcement and limits
+    }
+    
+    #[test]
+    fn test_memtable_sequence_numbers() {
+        // Test sequence number incrementing
+    }
+    
+    #[test]
+    fn test_memtable_entries() {
+        // Test entry retrieval and sorting
+    }
+    
+    #[test]
+    fn test_memtable_clear() {
+        // Test clearing and reset functionality
+    }
+    
+    #[test]
+    fn test_memtable_invalid_inputs() {
+        // Test error handling for invalid inputs
+    }
+    
+    #[test]
+    fn test_memtable_thread_safety() {
+        // Test concurrent access with multiple threads
+    }
+    
+    #[test]
+    fn test_memtable_ordering() {
+        // Test that entries maintain sorted order
     }
 }
 ```
@@ -450,6 +496,15 @@ fn bench_compaction_speed(b: &mut Bencher) {
 ---
 
 ## Implementation Notes
+
+### MemTable Implementation
+- **Data Structure Choice**: Sorted vector with binary search instead of BTreeMap
+  - **Rationale**: Simpler to implement, easier to make thread-safe, still O(log n) performance
+  - **Trade-offs**: Insertions are O(n) due to shifting, but reads remain O(log n)
+  - **Thread Safety**: Arc<RwLock<Vec<Entry>>> provides safe concurrent access
+- **Size Tracking**: Accurate byte-level monitoring with configurable limits
+- **Sequence Numbers**: Monotonically increasing for all operations (put, delete)
+- **Tombstone Support**: Deletions create entries with None values for proper LSM semantics
 
 ### Error Handling
 - **Custom error types** using `thiserror`
