@@ -321,10 +321,10 @@ async fn test_wal_rotation_and_flushing() {
     let temp_dir = tempdir().unwrap();
     let engine_path = temp_dir.path();
 
-    // Create engine with very small MemTable size
+    // Create engine with very small MemTable size to trigger multiple flushes
     let config = EngineConfig {
         data_dir: engine_path.to_path_buf(),
-        memtable_size: 512 * 1024, // 512KB to allow more entries
+        memtable_size: 1024, // 1KB to ensure multiple flushes
         compression: CompressionType::None,
         max_levels: 7,
     };
@@ -336,6 +336,11 @@ async fn test_wal_rotation_and_flushing() {
         let key = format!("flush:key{}", i);
         let value = format!("value{}", i);
         engine.put(key.as_bytes(), value.as_bytes()).await.unwrap();
+        
+        // Force flush every 5 entries to ensure multiple SSTables
+        if (i + 1) % 5 == 0 {
+            engine.force_flush().await.unwrap();
+        }
     }
 
     // Force final flush

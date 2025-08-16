@@ -387,9 +387,10 @@ impl SSTable {
         let header_placeholder = vec![0u8; header_size];
         writer.write_all(&header_placeholder)?;
 
-        // Write bloom filter placeholder
+        // Write bloom filter placeholder - use actual bloom filter size
         let bloom_filter_offset = writer.stream_position()?;
-        let bloom_filter_placeholder = vec![0u8; 64]; // Fixed size for now
+        let bloom_filter_size = bloom_filter.bits().len();
+        let bloom_filter_placeholder = vec![0u8; bloom_filter_size];
         writer.write_all(&bloom_filter_placeholder)?;
 
         // Write data section
@@ -399,8 +400,8 @@ impl SSTable {
             // Add to bloom filter
             bloom_filter.add(&entry.key);
 
-            // Calculate entry start position
-            let entry_start = writer.stream_position()?;
+            // Calculate entry start position (after header)
+            let _entry_start = writer.stream_position()?;
 
             // Write entry header: key_len (4) + value_len (4) + timestamp (8) + seq (8)
             let key_len = entry.key.len() as u32;
@@ -411,14 +412,17 @@ impl SSTable {
             writer.write_all(&entry.timestamp.to_le_bytes())?;
             writer.write_all(&entry.sequence_number.to_le_bytes())?;
 
+            // Calculate key data offset (after the header) - this should be relative to data_offset
+            let key_data_offset = writer.stream_position()? - data_offset;
+
             // Write key and value data
             writer.write_all(&entry.key)?;
             if let Some(value) = &entry.value {
                 writer.write_all(value)?;
             }
 
-            // Add to index
-            index.add_entry(entry.key.clone(), entry_start, key_len, value_len);
+            // Add to index with key_data_offset (points to where key data starts, relative to data section)
+            index.add_entry(entry.key.clone(), key_data_offset, key_len, value_len);
         }
 
         // Calculate total data size
@@ -527,31 +531,17 @@ impl SSTable {
         let index_entry = index_entry.unwrap();
         println!("DEBUG: Key {:?} found in index at offset {}", String::from_utf8_lossy(key), index_entry.offset);
 
-        // Seek to data position
-        self.file.seek(SeekFrom::Start(index_entry.offset))?;
-        println!("DEBUG: Seeking to offset {} for key {:?}", index_entry.offset, String::from_utf8_lossy(key));
-
-        // Read entry header
-        let mut key_len_bytes = [0u8; 4];
-        self.file.read_exact(&mut key_len_bytes)?;
-        let key_len = u32::from_le_bytes(key_len_bytes);
-        println!("DEBUG: Read key_len: {}", key_len);
-
-        let mut value_len_bytes = [0u8; 4];
-        self.file.read_exact(&mut value_len_bytes)?;
-        let value_len = u32::from_le_bytes(value_len_bytes);
-        println!("DEBUG: Read value_len: {}", value_len);
-
-        let mut timestamp_bytes = [0u8; 8];
-        self.file.read_exact(&mut timestamp_bytes)?;
-        let _timestamp = u64::from_le_bytes(timestamp_bytes);
-
-        let mut seq_bytes = [0u8; 8];
-        self.file.read_exact(&mut seq_bytes)?;
-        let _sequence_number = u64::from_le_bytes(seq_bytes);
+        // Use the key_size and value_size from the index entry directly
+        let key_size = index_entry.key_size as usize;
+        let value_size = index_entry.value_size as usize;
+        
+        println!("DEBUG: Using key_size: {}, value_size: {} from index", key_size, value_size);
 
         // Read key (verify it matches)
-        let mut stored_key = vec![0u8; key_len as usize];
+        let mut stored_key = vec![0u8; key_size];
+        // The offset in the index is relative to the data section start
+        let absolute_offset = self.header.data_offset + index_entry.offset;
+        self.file.seek(SeekFrom::Start(absolute_offset))?;
         self.file.read_exact(&mut stored_key)?;
         println!("DEBUG: Read stored_key: {:?}", String::from_utf8_lossy(&stored_key));
 
@@ -567,13 +557,13 @@ impl SSTable {
         println!("DEBUG: Key verification passed");
 
         // Read value
-        if value_len > 0 {
-            let mut value = vec![0u8; value_len as usize];
+        if value_size > 0 {
+            let mut value = vec![0u8; value_size];
             self.file.read_exact(&mut value)?;
             println!("DEBUG: Read value: {:?}", String::from_utf8_lossy(&value));
             Ok(Some(value))
         } else {
-            println!("DEBUG: Value length is 0 (tombstone)");
+            println!("DEBUG: Value size is 0 (tombstone)");
             Ok(None) // Tombstone
         }
     }

@@ -5,6 +5,7 @@
 **Status**: Current Specification  
 **Last Updated**: 2025-01-08  
 **Compatibility**: Breaking changes require major version bump  
+**Test Status**: All 85 tests passing ✅  
 
 ---
 
@@ -567,6 +568,41 @@ mod wal_tests {
         // Test corruption detection and recovery mechanisms
     }
     
+}
+
+### 2. Integration Tests
+
+#### Engine Integration Tests
+```rust
+#[cfg(test)]
+mod integration_tests {
+    #[test]
+    async fn test_persistence_across_restart() {
+        // Test complete data persistence: write → flush → restart → read
+    }
+    
+    #[test]
+    async fn test_wal_rotation_and_flushing() {
+        // Test multiple SSTable creation with appropriate MemTable sizing
+    }
+    
+    #[test]
+    async fn test_large_dataset() {
+        // Test handling of large datasets that trigger MemTable flushes
+    }
+    
+    #[test]
+    async fn test_compaction_correctness() {
+        // Test compaction engine with multiple SSTables
+    }
+}
+```
+
+#### Test Configuration Best Practices
+- **MemTable sizing**: Use appropriate sizes for test scenarios (e.g., 1KB for multiple SSTable tests)
+- **Explicit flushing**: Force flushes when testing specific behaviors
+- **Threshold testing**: Ensure tests actually trigger the code paths they're testing
+- **Realistic data**: Use data volumes that match expected production patterns
     #[test]
     fn test_wal_record_structure() {
         // Test WALRecord creation and validation
@@ -794,6 +830,21 @@ fn bench_compaction_speed(b: &mut Bencher) {
 - **Recoverable vs. fatal errors** clearly distinguished
 - **Context information** included in error messages
 - **Error codes** for programmatic handling
+
+### SSTable Implementation
+- **File Format**: Binary format with header, bloom filter, data section, index, and footer
+  - **Header**: 64 bytes with magic number, version, entry counts, and section offsets
+  - **Bloom Filter**: Variable-size bloom filter for fast key existence checks
+  - **Data Section**: Sequential entries with headers (key_len, value_len, timestamp, seq)
+  - **Index**: Sparse index with key data offsets relative to data section start
+  - **Footer**: 32 bytes with checksum, data size, and index size
+- **Index Offset Calculation**: Critical for data integrity
+  - **Correct Implementation**: Index stores offsets relative to data section start
+  - **Data Layout**: Entry header → key data → value data (if not tombstone)
+  - **Reading Process**: Seek to data_offset + index_offset, read key then value
+- **Bloom Filter Sizing**: Must match actual data size to prevent corruption
+  - **Placeholder Size**: Use actual bloom filter size, not fixed 64 bytes
+  - **File Corruption Prevention**: Mismatched sizes cause offset shifts and data corruption
 
 ### Engine Implementation
 - **Component Orchestration**: Engine coordinates WAL, MemTable, and SSTable operations

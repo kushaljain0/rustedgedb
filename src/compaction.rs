@@ -325,7 +325,7 @@ impl CompactionEngine {
             bloom_filter.add(&entry.key);
 
             // Calculate entry start position
-            let entry_start = writer.stream_position()?;
+            let _entry_start = writer.stream_position()?;
 
             // Write entry header: key_len (4) + value_len (4) + timestamp (8) + seq (8)
             let key_len = entry.key.len() as u32;
@@ -336,14 +336,17 @@ impl CompactionEngine {
             writer.write_all(&entry.timestamp.to_le_bytes())?;
             writer.write_all(&entry.sequence_number.to_le_bytes())?;
 
+            // Calculate key data offset (after the header) - this should be relative to data_offset
+            let key_data_offset = writer.stream_position()? - data_offset;
+
             // Write key and value data
             writer.write_all(&entry.key)?;
             if let Some(value) = &entry.value {
                 writer.write_all(value)?;
             }
 
-            // Add to index
-            index.add_entry(entry.key.clone(), entry_start, key_len, value_len);
+            // Add to index with key_data_offset (points to where key data starts, relative to data section)
+            index.add_entry(entry.key.clone(), key_data_offset, key_len, value_len);
         }
 
         // Calculate total data size

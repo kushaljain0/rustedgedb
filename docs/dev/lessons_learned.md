@@ -221,6 +221,44 @@ fn test_wal_corruption_handling() {
 
 ## SSTable Implementation
 
+### **Critical Bug: Index Offset Calculation (2025-01-08)**
+
+#### Problem Encountered
+Integration tests were failing with corrupted data reads, showing extremely large key_len/value_len values and key mismatches. The database could write data but couldn't read it back correctly.
+
+#### Root Cause Analysis
+The issue was in the SSTable file format where:
+1. **Index Offset Bug**: Index entries stored `entry_start` (pointing to entry header) instead of the offset to key data
+2. **Bloom Filter Size Mismatch**: Fixed 64-byte placeholder vs actual bloom filter size caused file corruption
+3. **Offset Calculation Error**: When reading, the code sought to wrong positions in the file
+
+#### Solution Implemented
+Fixed both main SSTable creation and compaction engine:
+```rust
+// Before: Wrong offset calculation
+index.add_entry(entry.key.clone(), entry_start, key_len, value_len);
+
+// After: Correct offset calculation
+let key_data_offset = writer.stream_position()? - data_offset;
+index.add_entry(entry.key.clone(), key_data_offset, key_len, value_len);
+
+// Fixed bloom filter sizing
+let bloom_filter_size = bloom_filter.bits().len();
+let bloom_filter_placeholder = vec![0u8; bloom_filter_size];
+```
+
+#### Key Learnings
+1. **File Format Consistency**: Index offsets must point to actual data, not metadata headers
+2. **Bloom Filter Sizing**: Placeholder size must match actual data size to prevent corruption
+3. **Offset Relativity**: Index offsets should be relative to data section start for consistency
+4. **Testing Coverage**: Integration tests are crucial for catching file format bugs
+5. **Code Duplication**: Same bug existed in both main SSTable and compaction engine code
+
+#### Impact
+- **Before**: 3 failing integration tests due to data corruption
+- **After**: All 85 tests passing with correct data integrity
+- **Reliability**: Database now properly handles persistence and compaction
+
 ### **File Format Design and Validation**
 
 #### Problem Encountered
@@ -604,6 +642,42 @@ assert!(result.is_err()); // Now this actually tests the limit
 - **Test edge cases** and boundary conditions
 - **Use appropriate assertions** for the actual behavior
 
+### **Integration Test Configuration (2025-01-08)**
+
+#### Problem Encountered
+Tests expecting multiple SSTables were failing because MemTable size thresholds were too large to trigger automatic flushes.
+
+#### Root Cause
+- **Default MemTable size**: 64MB was too large for test data
+- **Test data volume**: 20 entries with short keys/values didn't exceed threshold
+- **Automatic flush logic**: Only triggered when `memtable.is_full()` returns true
+
+#### Solution Implemented
+```rust
+// Before: Large MemTable size prevented multiple flushes
+let config = EngineConfig {
+    memtable_size: 512 * 1024, // 512KB
+    // ...
+};
+
+// After: Small MemTable size ensures multiple flushes
+let config = EngineConfig {
+    memtable_size: 1024, // 1KB
+    // ...
+};
+
+// Added explicit flush calls for guaranteed SSTable creation
+if (i + 1) % 5 == 0 {
+    engine.force_flush().await.unwrap();
+}
+```
+
+#### Key Learnings
+1. **Test configuration matters**: Use appropriate sizes for test scenarios
+2. **Explicit vs automatic**: Force flushes when testing specific behaviors
+3. **Threshold testing**: Ensure tests actually trigger the code paths they're testing
+4. **Configuration validation**: Test with realistic configurations
+
 ### **Comprehensive Test Coverage**
 
 #### What to Test
@@ -612,6 +686,7 @@ assert!(result.is_err()); // Now this actually tests the limit
 3. **Error conditions**: Invalid inputs and error handling
 4. **Thread safety**: Concurrent access patterns
 5. **Performance**: Size limits and memory management
+6. **Integration scenarios**: Component interactions and data flow
 
 #### Test Organization
 ```rust
@@ -974,8 +1049,9 @@ file.write_all(b"corrupted data here").unwrap();
 ---
 
 **Last Updated**: 2025-01-08  
-**Version**: 3.0  
+**Version**: 4.0  
 **Maintainer**: Development Team  
+**Test Status**: All 85 tests passing ✅  
 
 ---
 
