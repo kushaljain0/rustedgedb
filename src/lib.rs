@@ -3,6 +3,7 @@
 //! This library provides the core database engine functionality.
 
 pub mod compaction;
+pub mod engine;
 pub mod memtable;
 pub mod sstable;
 pub mod wal;
